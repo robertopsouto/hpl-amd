@@ -32,8 +32,9 @@ echo "cmd: ${@}"
 
 export NB=${1:-1024}
 tpn=$((SLURM_NTASKS / SLURM_JOB_NUM_NODES))
-gpt=$((1536 / $tpn))
+gpt=$((1 * $SLURM_CPUS_PER_TASK))
 GIG_PER_TASK=${2:-${gpt}}
+#GIG_PER_TASK=${2:-1}
 echo "GIG PER TASK = $GIG_PER_TASK"
 echo "NB = " $NB
 
@@ -80,6 +81,8 @@ export HPL_P2P_AS_BCAST=4
 #clush -w ${SLURM_NODELIST} 'sudo nvidia-smi boost-slider -i 0,1,2,3 --vboost 1'
 
 #srun -n $SLURM_NTASKS --cpu_bind=none --mpi=pmi2 singularity run --nv $CONT /workspace/hpl.sh --dat ./HPL.dat  --gpu-affinity ${GPU_AFFINITY}  --ucx-affinity ${UCX_AFFINITY} | tee hpl.out
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 echo "executable: ${executable}"
 srun -n $SLURM_NTASKS ${executable} 

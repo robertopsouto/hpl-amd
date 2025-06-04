@@ -36,11 +36,20 @@ spack load hpl@2.3
 #echo 'always' > /sys/kernel/mm/transparent_hugepage/defrag  # Enable page defragmentation and coalescing
 
 # Capture system specification and OpenMP settings
-CORES_PER_L3CACHE=$SLURM_CPUS_PER_TASK
+#CORES_PER_L3CACHE=$SLURM_CPUS_PER_TASK
+CORES_PER_L3CACHE=8
 NUM_CORES=192
 # Use 4 threads per MPI rank  - this means 2 ranks per CPU L3cache (Zen 2+) or 1 rank per L3 (Zen 1), If using an "F" part (e.g 75F3) also ensure that OMP_NUM_THREADS is set appropriately
 # (Recommended OMP_NUM_THREADS= #cores per L3 cache)
-export OMP_NUM_THREADS=$((CORES_PER_L3CACHE / 2))
+if [ $SLURM_CPUS_PER_TASK -eq 1 ]
+then
+   export OMP_NUM_THREADS=1
+else
+   export OMP_NUM_THREADS=$((CORES_PER_L3CACHE / 2))
+fi
+
+echo "OMP_NUM_THREADS: $OMP_NUM_THREADS"
+
 export OMP_PROC_BIND=TRUE  # bind threads to specific resources
 export OMP_PLACES="cores"   # bind threads to cores
 
@@ -54,7 +63,16 @@ export BLIS_IR_NT=1 # (No 5th level threads)
 #MPI_RANKS=$(( $NUM_CORES / $OMP_NUM_THREADS ))
 MPI_RANKS=$SLURM_NTASKS
 RANKS_PER_L3CACHE=$(( $CORES_PER_L3CACHE / $OMP_NUM_THREADS ))
+echo "RANKS_PER_L3CACHE: $RANKS_PER_L3CACHE"
 MPI_OPTS="-np $MPI_RANKS --bind-to core --map-by ppr:$RANKS_PER_L3CACHE:l3cache:pe=$OMP_NUM_THREADS"
+echo $MPI_OPTS
+
+
+./nodeset -e $SLURM_JOB_NODELIST
+echo "SLURM_JOB_NODELIST: $SLURM_JOB_NODELIST"
+
 
 # Running HPL
-mpirun $MPI_OPTS xhpl
+#mpirun $MPI_OPTS xhpl
+
+#srun -n $MPI_RANKS xhpl
