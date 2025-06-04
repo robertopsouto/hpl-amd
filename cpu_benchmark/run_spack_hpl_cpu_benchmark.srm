@@ -83,6 +83,7 @@ export HPL_P2P_AS_BCAST=4
 #srun -n $SLURM_NTASKS --cpu_bind=none --mpi=pmi2 singularity run --nv $CONT /workspace/hpl.sh --dat ./HPL.dat  --gpu-affinity ${GPU_AFFINITY}  --ucx-affinity ${UCX_AFFINITY} | tee hpl.out
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export PMIX_MCA_psec=^munge
 
 echo "executable: ${executable}"
 srun -n $SLURM_NTASKS ${executable} 
