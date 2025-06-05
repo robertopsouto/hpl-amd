@@ -5,7 +5,7 @@
 #SBATCH --reservation=cpu_benchmark
 #SBATCH -J HPL-CPU-AMD
 #SBATCH --account=invmultifis
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 
 module load amd-compilers/5.0.0
 module load amd-libraries/5.0.0
@@ -32,7 +32,7 @@ echo "cmd: ${@}"
 
 export NB=${1:-1024}
 tpn=$((SLURM_NTASKS / SLURM_JOB_NUM_NODES))
-gpt=$((1 * $SLURM_CPUS_PER_TASK))
+gpt=$((2 * $SLURM_CPUS_PER_TASK))
 GIG_PER_TASK=${2:-${gpt}}
 #GIG_PER_TASK=${2:-1}
 echo "GIG PER TASK = $GIG_PER_TASK"
