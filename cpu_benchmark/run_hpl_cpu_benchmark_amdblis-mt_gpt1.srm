@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 192
+#SBATCH --partition=cpu_benchmark
+#SBATCH --reservation=cpu_benchmark
+#SBATCH -J HPL-CPU-AMD
+#SBATCH --account=invmultifis
+#SBATCH --time=24:00:00
+
+gigaPerCore=1
+
+module load amd-compilers/5.0.0
+module load amd-libraries/5.0.0
+module load amd-uprof/5.0
+module load openmpi/amd/4.1.6.15.1
+
+#spack load openmpi@5.0.5
+executable=/scratch/invmultifis/roberto.souto6/benchmarks/hpl-2.3/install_amdblis-mt/bin/xhpl
+#spack load hpl
+#executable=xhpl
+
+export ROOT=/scratch/invmultifis/roberto.souto6/benchmarks/lncc/hpl_cpu_amd
+
+#CONT="${ROOT}/hpl-ai.sif"
+
+echo "cmd: ${@}"
+
+export NB=${1:-128}
+tpn=$((SLURM_NTASKS / SLURM_JOB_NUM_NODES))
+gpt=$((gigaPerCore * $SLURM_CPUS_PER_TASK))
+GIG_PER_TASK=${2:-${gpt}}
+#GIG_PER_TASK=${2:-1}
+echo "GIG PER TASK = $GIG_PER_TASK"
+echo "NB = " $NB
+
+export p=$($ROOT/utils/hpl_util.py   --tasks=$SLURM_NTASKS --compute=P )
+export q=$($ROOT/utils/hpl_util.py   --tasks=$SLURM_NTASKS --compute=Q )
+export P=${3:-$p}
+export Q=${4:-$q}
+
+echo "P: ${P} --- Q: ${Q}"
+
+export N=$($ROOT/utils/hpl_util.py  --compute=N --nb=$NB --tasks=$SLURM_NTASKS --mem-per-task=$GIG_PER_TASK --ppn=$tpn)
+echo "HPL params: P=$P, Q=$Q, NB=$NB, N=$N"
+WKDIR=DIR_${SLURM_NNODES}_${SLURM_NTASKS}_${SLURM_JOB_ID}_gigaPerTask-${GIG_PER_TASK}_Size-${N}
+mkdir $SLURM_SUBMIT_DIR/$WKDIR
+cp -f $0 $WKDIR/slurm_script
+cd $WKDIR
+
+
+echo "Problem Size (N): $N"
+
+cp -f $ROOT/HPL_template.dat ./HPL.dat
+sed -i "s@__N__@$N@g" HPL.dat
+sed -i "s@__NB__@$NB@g" HPL.dat
+sed -i "s@__P__@$P@g" HPL.dat
+sed -i "s@__Q__@$Q@g" HPL.dat
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+#export PMIX_MCA_psec=^munge
+
+#Exibe os nós alocados para o Job
+echo "running on ${SLURM_NODELIST}"
+#nodes=$(nodeset --separator=',' -e $SLURM_JOB_NODELIST)
+#echo "nodes: $nodes"
+
+echo "executable: ${executable}"
+#srun -n $SLURM_NTASKS ${executable} 
+srun --mpi=pmi2 -n $SLURM_NTASKS ${executable} 
+#mpirun -n $SLURM_NTASKS ${executable} 
+#mpirun --host $nodes -n $SLURM_NTASKS ${executable}
+#${executable} 
+
+cp ${SLURM_SUBMIT_DIR}/slurm-${SLURM_JOBID}.out ${SLURM_SUBMIT_DIR}/$WKDIR/
