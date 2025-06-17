@@ -1,0 +1,121 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 192
+#SBATCH --partition=cpu_benchmark
+#SBATCH --reservation=cpu_benchmark
+#SBATCH -J HPL-CPU-AMD
+#SBATCH --account=invmultifis
+#SBATCH --time=24:00:00
+
+gigaPerCore=1
+
+module load amd-compilers/5.0.0
+module load amd-libraries/5.0.0
+module load amd-uprof/5.0
+
+workdir=/scratch/invmultifis/roberto.souto6
+version=v0.23.1
+spackdir=${workdir}/spack/${version}
+. ${spackdir}/share/spack/setup-env.sh
+
+export SPACK_USER_CONFIG_PATH=${workdir}/.spack/${version}
+#export SPACK_USER_CACHE_PATH=${SPACK_USER_CONFIG_PATH}/tmp
+#export TMP=${SPACK_USER_CACHE_PATH}
+#export TMPDIR=${SPACK_USER_CACHE_PATH}
+
+spack env activate hpl_cpu_benchmark_openmpi5
+spack env status
+
+spack load openmpi@5.0.5
+executable=$(spack location -i hpl)/bin/xhpl
+#spack load hpl
+#executable=xhpl
+
+export ROOT=/scratch/invmultifis/roberto.souto6/benchmarks/lncc/hpl_cpu_amd
+
+#CONT="${ROOT}/hpl-ai.sif"
+
+echo "cmd: ${@}"
+
+export NB=${1:-1024}
+tpn=$((SLURM_NTASKS / SLURM_JOB_NUM_NODES))
+gpt=$((gigaPerCore * $SLURM_CPUS_PER_TASK))
+GIG_PER_TASK=${2:-${gpt}}
+#GIG_PER_TASK=${2:-1}
+echo "GIG PER TASK = $GIG_PER_TASK"
+echo "NB = " $NB
+
+export p=$($ROOT/utils/hpl_util.py   --tasks=$SLURM_NTASKS --compute=P )
+export q=$($ROOT/utils/hpl_util.py   --tasks=$SLURM_NTASKS --compute=Q )
+export P=${3:-$p}
+export Q=${4:-$q}
+
+echo "P: ${P} --- Q: ${Q}"
+
+export N=$($ROOT/utils/hpl_util.py  --compute=N --nb=$NB --tasks=$SLURM_NTASKS --mem-per-task=$GIG_PER_TASK --ppn=$tpn)
+echo "HPL params: P=$P, Q=$Q, NB=$NB, N=$N"
+WKDIR=DIR_${SLURM_NNODES}_${SLURM_NTASKS}_${SLURM_JOB_ID}_gigaPerTask-${GIG_PER_TASK}_Size-${N}
+mkdir $SLURM_SUBMIT_DIR/$WKDIR
+cp -f $0 $WKDIR/slurm_script
+cd $WKDIR
+
+
+echo "Problem Size (N): $N"
+
+cp -f $ROOT/HPL_template.dat ./HPL.dat
+sed -i "s@__N__@$N@g" HPL.dat
+sed -i "s@__NB__@$NB@g" HPL.dat
+sed -i "s@__P__@$P@g" HPL.dat
+sed -i "s@__Q__@$Q@g" HPL.dat
+
+#export GPU_AFFINITY="0:1:2:3"
+#export UCX_AFFINITY="mlx5_0:mlx5_1:mlx5_2:mlx5_3"
+
+# Tunnings
+#export HPL_OOC_MODE=0
+#export HPL_ALLOC_HUGEPAGES=1
+#export HPL_USE_NVSHMEM=1
+#export HPL_NVSHMEM_SWAP=1
+#export HPL_CTA_PER_FCT=32
+#export HPL_P2P_AS_BCAST=4
+
+# From TIYA REPORT:
+#export HPL_CUSOLVER_MP_TESTS=0
+#export WARMUP_END_PROG=5
+#export HPL_DIST_TRSM=0
+
+#nvidia-smi -i 0 -a -d POWER
+
+#clush -w ${SLURM_NODELIST} 'sudo nvidia-smi boost-slider -i 0,1,2,3 --vboost 1'
+
+#srun -n $SLURM_NTASKS --cpu_bind=none --mpi=pmi2 singularity run --nv $CONT /workspace/hpl.sh --dat ./HPL.dat  --gpu-affinity ${GPU_AFFINITY}  --ucx-affinity ${UCX_AFFINITY} | tee hpl.out
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export PMIX_MCA_psec=^munge
+
+#Exibe os nós alocados para o Job
+echo "running on ${SLURM_NODELIST}"
+
+nodeset -O '%s  slots='$tpn -e -S '\n' $SLURM_NODELIST 2>&1 | tee ${SLURM_SUBMIT_DIR}/hosfile-${SLURM_JOBID}.txt
+
+#https://clustershell.readthedocs.io/en/latest/tools/nodeset.html
+# create hostfile for test
+#echo ${nodes} 2>&1 | tee ${SLURM_SUBMIT_DIR}/hosfile-${SLURM_JOBID}.txt
+
+#cat << EOF > ${SLURM_SUBMIT_DIR}/hosfile-${SLURM_JOBID}.txt
+#c1 slots=64
+#c2 slots=64
+#EOF
+
+echo "executable: ${executable}"
+#srun -n $SLURM_NTASKS ${executable} 
+#srun --mpi=pmi2 -n $SLURM_NTASKS ${executable} 
+#mpirun -n $SLURM_NTASKS ${executable} 
+mpirun --mca prte_silence_shared_fs 1 \
+       --hostfile ${SLURM_SUBMIT_DIR}/hosfile-${SLURM_JOBID}.txt \
+       -n $SLURM_NTASKS \
+       ${executable}
+
+#clush -w ${SLURM_NODELIST} 'sudo nvidia-smi boost-slider -i 0,1,2,3 --vboost 0'
+
+cp ${SLURM_SUBMIT_DIR}/slurm-${SLURM_JOBID}.out ${SLURM_SUBMIT_DIR}/$WKDIR/
